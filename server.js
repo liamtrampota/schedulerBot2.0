@@ -146,21 +146,26 @@ rtm.on('message', function (event) {
 
       sessionClient.detectIntent(request)
         .then(responses => {
+          //Get information about result
           const result = responses[0].queryResult;
           console.log('result params from dialogflow:', result.parameters)
           console.log(`  Response: ${result.fulfillmentText}`);
+          console.log('requireParams present:', result.allRequiredParamsPresent)
           if (result.intent) {
             console.log(`  Intent: ${result.intent.displayName}`);
-            if(result.intent.displayName == 'reminders.add'){
-                makeCalendarAPICall(user[0].token, conversationId, 'reminder', {subject:result.parameters.fields.name.stringValue, date: result.parameters.fields['date-time'].stringValue})
-            }
-            if(event.text==='upcoming events'){
-              makeCalendarAPICall(user[0].token, conversationId, 'list')
-            }
-          } else {
-            console.log(`  No intent matched.`);
           }
 
+          //check if user info is complete request
+          if(!result.allRequiredParamsPresent){
+            //requests user for more info
+            console.log('require more user info:', result.fulfillmentText)
+            rtm.sendMessage(result.fulfillmentText, conversationId)
+          } else {
+            //checking which intent was matched - makes corresponding calendar api call
+              if(result.intent.displayName == 'reminders.add'){
+                  makeCalendarAPICall(user[0].token, conversationId, 'reminder', {subject:result.parameters.fields.name.stringValue, date: result.parameters.fields['date-time'].stringValue})
+              }
+            }
         })
         .catch(err => {
           console.error('ERROR:', err);
