@@ -12,7 +12,7 @@ mongoose.connect(process.env.MONGODB_URI);
 const dialogflow = require('dialogflow');
 
 //calender API function
-function  makeCalendarAPICall(token, conversationId, type, event) {
+function  makeCalendarAPICall(token, conversationId, type, event, user) {
  console.log('makeCalender called with token:', token)
 
  //sets OAuth2
@@ -56,6 +56,28 @@ function  makeCalendarAPICall(token, conversationId, type, event) {
       }, (err, data) => {
         if (err) return console.log('The API returned an error: ' + err);
         else {
+          var a=new Date(data.data.start.date);
+          console.log("a :",a)
+          var b=Number(a)
+          console.log("b :",b)
+          fetch("https://slack.com/api/reminders.add", {
+              method: "POST", // *GET, POST, PUT, DELETE, etc.
+              mode: "cors", // no-cors, cors, *same-origin
+              cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
+              credentials: "same-origin", // include, same-origin, *omit
+              headers: {
+                  "Content-Type": "application/json; charset=utf-8",
+              },
+              redirect: "follow", // manual, *follow, error
+              referrer: "no-referrer", // no-referrer, *client
+              body: JSON.stringify({
+                token:process.env.SLACK_TOKEN,
+                text:data.data.summary,
+                time:b,
+              }), // body data type must match "Content-Type" header
+          })
+          .then(response => response.json())
+          .then(json=>console.log("json :",json))
           rtm.sendMessage(('successfully scheduled a reminder to '+data.data.summary +' on ' + data.data.start.date), conversationId)}
       }
     )
@@ -152,7 +174,7 @@ rtm.on('message', function (event) {
           if (result.intent) {
             console.log(`  Intent: ${result.intent.displayName}`);
             if(result.intent.displayName == 'reminders.add'){
-                makeCalendarAPICall(user[0].token, conversationId, 'reminder', {subject:result.parameters.fields.name.stringValue, date: result.parameters.fields['date-time'].stringValue})
+                makeCalendarAPICall(user[0].token, conversationId, 'reminder', {subject:result.parameters.fields.name.stringValue, date: result.parameters.fields['date-time'].stringValue},event.user)
             }
             if(event.text==='upcoming events'){
               makeCalendarAPICall(user[0].token, conversationId, 'list')
