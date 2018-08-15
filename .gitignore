@@ -1,11 +1,4 @@
-<<<<<<< HEAD
-node_modules
-env.sh
-credentials.json
-dialogueflow.json
-=======
 env.sh
 credentials.json
 dialogue-flow.json
 node_modules
->>>>>>> 7a32247c253938d8f5ec50db4478a7d57cae6aa9
