@@ -138,7 +138,7 @@ const oauth2Client = new google.auth.OAuth2(
   process.env.REDIRECT_URL
 );
 
-const scopes = 'https://www.googleapis.com/auth/calendar';
+const scopes = ['https://www.googleapis.com/auth/calendar','https://www.googleapis.com/auth/gmail.readonly'];
 
 
 //Slackbot
@@ -231,7 +231,10 @@ app.use(bodyParser.json())
 // Google OAuth2 callback
 app.get('/oauthcallback', (req, res) => {
   console.log('oauthcallback')
+  console.log('req:', req)
+  console.log('req.body:', req.body)
   oauth2Client.getToken(req.query.code, function (err, token) {
+    console.log('req.query:', req.query)
     if (err) return console.error(err.message)
     else { var newUser = new User({
       user: req.query.state,
@@ -243,6 +246,7 @@ app.get('/oauthcallback', (req, res) => {
       });
     };
     console.log('token', token, 'state', req.query.state)
+    console.log('req.query:',req.query)
     res.send('ok')
   })
 })
