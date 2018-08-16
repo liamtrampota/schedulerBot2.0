@@ -4,7 +4,7 @@ const express = require('express')
 const bodyParser = require('body-parser')
 const mongoose = require('mongoose');
 import {User} from './models.js';
-
+const fetch = require('node-fetch-polyfill')
 //connect to mongoose
 mongoose.connect(process.env.MONGODB_URI);
 
@@ -134,7 +134,7 @@ const oauth2Client = new google.auth.OAuth2(
   process.env.REDIRECT_URL
 );
 
-const scopes = ['https://www.googleapis.com/auth/calendar','https://www.googleapis.com/auth/gmail.readonly'];
+const scopes = ['https://www.googleapis.com/auth/calendar','https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/userinfo.email'];
 
 
 //Slackbot
@@ -163,7 +163,9 @@ rtm.on('message', function (event) {
   User.find({user:event.user}, function(err, user){
     console.log('user:', user)
     if(user.length == 0){
+      if(!event.bot_id){
       rtm.sendMessage(url, conversationId)
+    }
     } else{
       console.log('user exists:', user[0])
       const sessionClient = new dialogflow.SessionsClient();
@@ -225,14 +227,20 @@ app.get('/oauthcallback', (req, res) => {
   oauth2Client.getToken(req.query.code, function (err, token) {
     console.log('req.query:', req.query)
     if (err) return console.error(err.message)
-    else { var newUser = new User({
-      user: req.query.state,
-      token: token
-      });
-      newUser.save(function(err){
-        if (err) {console.log(error)}
-        else {console.log('successfully saved')}
-      });
+    else {
+      fetch('https://www.googleapis.com/oauth2/v1/userinfo?access_token='+token.access_token)
+      .then((res)=>res.json())
+      .then((obj)=>{
+        var newUser = new User({
+        user: req.query.state,
+        token: token,
+        email:obj.email
+        });
+        newUser.save(function(err){
+          if (err) {console.log(error)}
+          else {console.log('successfully saved')}
+        });
+      })
     };
     console.log('token', token, 'state', req.query.state)
     console.log('req.query:',req.query)
@@ -240,5 +248,5 @@ app.get('/oauthcallback', (req, res) => {
   })
 })
 
-console.log('listening on port 3000')
-app.listen(3000)
+console.log('listening on port 5000')
+app.listen(5000)
