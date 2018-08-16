@@ -41,33 +41,62 @@ function  makeCalendarAPICall(token, conversationId, type, event, user) {
   //checks if calendar call is for reminder
 
   if(type=='scheduler'){
-    var array=names.map((name)=>({displayName:name.name, email:name.email}))
-    calendar.events.insert({
-        calendarId: 'primary', // Go to setting on your calendar to get Id
-        'resource': {
-          'attendees':array,
-          'summary': event.subject,
-          'end': {
-            'dateTime':event.endDate,
-            //'timeZone':
-          },
-          'start': {
-            'dateTime':correctDate,
-            //'timeZone':
-          }
-        }
+    var startDateTime = new Date(event.dateTime)
+    var startDateTimeNum = Number(startDateTime)
+    var endDateTimeNum = startDateTimeNum + (1000*60*30)
+    var endDateTime = new Date(endDateTimeNum)
+    User.find({name: {$in: [event.attendees]}}, function(err, users){
+      if(err){
+        console.log(err)
+      } else if(users.length>0){
+        var attendeeArray=users.map((user)=>({displayName:user.name, email:user.email}))
+        calendar.events.insert({
+            calendarId: 'primary', // Go to setting on your calendar to get Id
+            'resource': {
+              'attendees':attendeeArray,
+              'summary': event.subject,
+              'end': {
+                'dateTime': endDateTime,
+                //'timeZone':
+              },
+              'start': {
+                'dateTime':startDateTime,
+                //'timeZone':
+              }
+            }
 
-      }, (err, data) => {
-        if (err) return console.log('The API returned an error: ' + err);
-        else {
-          var a=new Date(data.data.start.date);
-          console.log("a :",a)
-          var b=Number(a)
-          console.log("b :",b)
-        web.reminder.add
-          rtm.sendMessage(('successfully scheduled a reminder to '+data.data.summary +' on ' + data.data.start.date), conversationId)}
+          }, (err, data) => {
+            if (err) return console.log('The API returned an error: ' + err);
+            else {
+              //console.log('successfully added meeting,', data)
+              rtm.sendMessage('Successfully scheduled the meeting!', conversationId)
+            }
+          })
+      } else {
+        calendar.events.insert({
+            calendarId: 'primary', // Go to setting on your calendar to get Id
+            'resource': {
+              'summary': event.subject,
+              'end': {
+                'dateTime': endDateTime,
+                //'timeZone':
+              },
+              'start': {
+                'dateTime':startDateTime,
+                //'timeZone':
+              }
+            }
+
+          }, (err, data) => {
+            if (err) return console.log('The API returned an error: ' + err);
+            else {
+              //console.log('successfully added meeting,', data)
+              rtm.sendMessage('Successfully scheduled the meeting!', conversationId)
+            }
+          })
       }
-    )
+    })
+
   }
 
   if(type=='reminder'){
@@ -200,8 +229,22 @@ rtm.on('message', function (event) {
             rtm.sendMessage(result.fulfillmentText, conversationId)
           } else {
             //checking which intent was matched - makes corresponding calendar api call
+            if(result.intent){
               if(result.intent.displayName == 'reminders.add'){
                   makeCalendarAPICall(user[0].token, conversationId, 'reminder', {subject:result.parameters.fields.name.stringValue, date: result.parameters.fields['date-time'].stringValue}, event.user)
+              }
+              else if(result.intent.displayName == 'Meeting'){
+                var attendees = result.parameters.fields['given-name'].listValue.values.map(function(item){
+                  return item.stringValue
+                })
+                console.log('attendees:', attendees)
+                var dateTime = result.parameters.fields.date.stringValue.slice(0,10)+'T'+result.parameters.fields.time.stringValue.slice(11,19);
+                makeCalendarAPICall(user[0].token, conversationId, 'scheduler', {subject:result.parameters.fields.subject.stringValue, dateTime:dateTime, attendees:attendees}, event.user)
+              } else {
+                rtm.sendMessage(result.fulfillmentText, conversationId)
+              }
+            } else {
+                rtm.sendMessage(result.fulfillmentText, conversationId)
               }
             }
         })
@@ -231,10 +274,13 @@ app.get('/oauthcallback', (req, res) => {
       fetch('https://www.googleapis.com/oauth2/v1/userinfo?access_token='+token.access_token)
       .then((res)=>res.json())
       .then((obj)=>{
+        console.log('obj:', obj)
         var newUser = new User({
         user: req.query.state,
         token: token,
-        email:obj.email
+        email:obj.email,
+        name: obj.name
+
         });
         newUser.save(function(err){
           if (err) {console.log(error)}
