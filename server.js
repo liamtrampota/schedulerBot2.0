@@ -3,6 +3,7 @@ const {google} = require('googleapis');
 const express = require('express')
 const bodyParser = require('body-parser')
 const mongoose = require('mongoose');
+const fetch = require('node-fetch-polyfill')
 import {User} from './models.js';
 
 //connect to mongoose
@@ -13,7 +14,8 @@ const dialogflow = require('dialogflow');
 
 //calender API function
 function  makeCalendarAPICall(token, conversationId, type, event, user) {
- console.log('makeCalender called with token:', token)
+  console.log('CALENDAR API CALL')
+  console.log('makeCalender called with token:', token)
 
  //sets OAuth2
  const oauth2Client = new google.auth.OAuth2(
@@ -27,6 +29,14 @@ function  makeCalendarAPICall(token, conversationId, type, event, user) {
   oauth2Client.on('tokens', (tokens) => {
     if (tokens.refresh_token) {
       // store the refresh_token in my database!
+      User.findOneAndUpdate({user: user}, {token:tokens}, function(err, user){
+        if(user){
+          console.log('updated users tokens')
+        } else {
+          console.log('did not update users tokens')
+        }
+      })
+      oauth2Client.setCredentials(tokens)
       console.log(tokens.refresh_token);
     }
   console.log(tokens.access_token);
@@ -59,25 +69,33 @@ function  makeCalendarAPICall(token, conversationId, type, event, user) {
           var a=new Date(data.data.start.date);
           console.log("a :",a)
           var b=Number(a)
-          console.log("b :",b)
-          fetch("https://slack.com/api/reminders.add", {
-              method: "POST", // *GET, POST, PUT, DELETE, etc.
-              mode: "cors", // no-cors, cors, *same-origin
-              cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
-              credentials: "same-origin", // include, same-origin, *omit
-              headers: {
-                  "Content-Type": "application/json; charset=utf-8",
-              },
-              redirect: "follow", // manual, *follow, error
-              referrer: "no-referrer", // no-referrer, *client
-              body: JSON.stringify({
-                token:process.env.SLACK_TOKEN,
-                text:data.data.summary,
-                time:b,
-              }), // body data type must match "Content-Type" header
+          console.log('b:', b)
+          var num1 = b-(1000*60*60*7)
+          var num2= b+(1000*60*60*9)
+          console.log("num1:", num1, new Date(num1))
+          console.log("num2:", num2, new Date(num2))
+          web.reminders.add({
+            text:data.data.summary,
+            time:num1,
+            user:user,
+            token:process.env.SLACK_USER_TOKEN
           })
-          .then(response => response.json())
-          .then(json=>console.log("json :",json))
+          .then((res) => {
+            console.log(res)
+          })
+          .catch(console.error)
+
+          web.reminders.add({
+            text:data.data.summary,
+            time:num2,
+            user:user,
+            token:process.env.SLACK_USER_TOKEN
+          })
+          .then((res) => {
+            console.log(res)
+          })
+          .catch(console.error)
+
           rtm.sendMessage(('successfully scheduled a reminder to '+data.data.summary +' on ' + data.data.start.date), conversationId)}
       }
     )
@@ -139,6 +157,7 @@ rtm.start()
 //   .catch(console.error);
 
 rtm.on('message', function (event) {
+  console.log("RECEIVED USER MESSAGE")
   const conversationId = event.channel;
   console.log('event:', event)
   const url = oauth2Client.generateAuthUrl({
@@ -147,9 +166,12 @@ rtm.on('message', function (event) {
     scope: scopes
   })
   User.find({user:event.user}, function(err, user){
+    console.log('FOUND USER')
     console.log('user:', user)
     if(user.length == 0){
-      rtm.sendMessage(url, conversationId)
+      if(event.bot_id === undefined){
+        rtm.sendMessage(url, conversationId)
+      }
     } else{
       console.log('user exists:', user[0])
       const sessionClient = new dialogflow.SessionsClient();
@@ -168,6 +190,7 @@ rtm.on('message', function (event) {
 
       sessionClient.detectIntent(request)
         .then(responses => {
+          console.log('DIALOGFLOW RESPONSE')
           //Get information about result
           const result = responses[0].queryResult;
           console.log('result params from dialogflow:', result.parameters)
@@ -186,6 +209,8 @@ rtm.on('message', function (event) {
             //checking which intent was matched - makes corresponding calendar api call
               if(result.intent.displayName == 'reminders.add'){
                   makeCalendarAPICall(user[0].token, conversationId, 'reminder', {subject:result.parameters.fields.name.stringValue, date: result.parameters.fields['date-time'].stringValue}, event.user)
+              } else {
+                rtm.sendMessage(result.fulfillmentText, conversationId)
               }
             }
         })
@@ -223,4 +248,4 @@ app.get('/oauthcallback', (req, res) => {
 })
 
 console.log('listening on port 3000')
-app.listen(3000)
+app.listen(5000)
