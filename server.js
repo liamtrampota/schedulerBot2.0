@@ -20,6 +20,7 @@ const dialogflow = require('dialogflow');
 //calender API function
 function  makeCalendarAPICall(user, conversationId, type, event) {
  console.log("CALENDER API CALLED", )
+ console.log("USER:", user);
 
  //sets OAuth2
  const oauth2Client = new google.auth.OAuth2(
@@ -43,6 +44,29 @@ function  makeCalendarAPICall(user, conversationId, type, event) {
 
   console.log('type:', type);
   console.log('event:', event);
+
+
+  //updater
+  if(type==='update'){
+    calendar.events.get({calendarId:user.email, eventId:event.eventId},(err,data)=>{
+      if(err) return console.log('The API(get) returned an error: ' + err)
+      else{
+        console.log('attendees:', data.data.attendees)
+        data.data.attendees[0].responseStatus='accepted'
+        console.log('attendees update:', data.data.attendees)
+        console.log('data',data.data)
+        var calendarObject={calendarId:'primary', eventId:event.eventId ,resource:data.data}
+        console.log('calendar Object', calendarObject)
+        calendar.events.update({calendarId:'primary', eventId:event.eventId ,resource:data.data},(err,data)=>{
+          if(err) return console.log('The API(update) returned an error: ' + err)
+          else{
+            console.log('successfully updated', data)
+            rtm.sendMessage('Meeting confirmed :)', conversationId)
+          }
+        })
+      }
+    })
+  }
 
   //checks if calendar call is for reminder
 
@@ -85,6 +109,7 @@ function  makeCalendarAPICall(user, conversationId, type, event) {
                 //console.log('successfully added meeting,', data)
                 rtm.sendMessage('Successfully scheduled the meeting!', conversationId)
                 console.log('CALENDAR MEETING INSERTED')
+                console.log('CALENDER DATA:', data.data.id)
                 event.attendees.forEach(function(id){
                   web.conversations.open({
                     token: process.env.SLACK_TOKEN,
@@ -94,12 +119,12 @@ function  makeCalendarAPICall(user, conversationId, type, event) {
                     web.chat.postMessage({
                       channel: response.channel.id,
                       // as_user: true,
-                      "text": "Liam Trampota has invited you to a meeting to discuss life at Thursday 4pm?",
+                      "text": user.name + " has invited you to a meeting to " + event.subject + ' at ' + startDateTime,
                       "attachments": [
                           {
                               "text": "Can you attend?",
                               "fallback": "You are unable to choose a game",
-                              "callback_id": "wopr_game",
+                              "callback_id": data.data.id,
                               "color": "#3AA3E3",
                               "attachment_type": "default",
                               "actions": [
@@ -277,6 +302,7 @@ function  makeCalendarAPICall(user, conversationId, type, event) {
 
 
 
+
 //Generating an authentication URL for user
 const oauth2Client = new google.auth.OAuth2(
   process.env.CLIENT_ID,
@@ -315,7 +341,7 @@ rtm.on('message', function (event) {
     console.log('user:', user)
     if(user.length == 0){
       if(!event.bot_id){
-      rtm.sendMessage('http://localhost:5000/authorize?user=' + event.user, conversationId)
+      rtm.sendMessage('http://ed3377e8.ngrok.io/authorize?user=' + event.user, conversationId)
     }
     } else{
       console.log('user exists:', user[0])
@@ -427,8 +453,23 @@ app.get('/authorize', (req, res) => {
   res.redirect(url)
 })
 
-app.get('/button', (req, res) => {
-  console.log(req.body)
+app.post('/button', (req, res) => {
+  console.log('button pressed')
+  var payload = JSON.parse(req.body.payload)
+  console.log(payload)
+  if(payload.actions[0].value=='yes'){
+    User.find({user:payload.user.id}, (err, user)=>{
+      if (err) {console.log(err)}
+      else {
+        console.log("FOUND USER:", user)
+        makeCalendarAPICall(user[0], payload.channel.id,'update',{eventId:payload.callback_id})
+      }
+    })
+  } else {
+    rtm.sendMessage('Meeting declined :)', payload.channel.id)
+  }
+  res.status(200).json()
+
 })
 
 console.log('listening on port 5000')
